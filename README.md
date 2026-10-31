@@ -39,9 +39,6 @@ uvicorn api.main:app --port 8000       # docs at http://localhost:8000/docs
 # then open frontend/reference/index.html in your browser
 ```
 
-New to all this? Follow `docs/STEP_BY_STEP_GUIDE.md`, then
-`docs/REAL_DATA_GUIDE.md` and `docs/DEPLOY_GUIDE.md`.
-
 ## Folder map
 
 ```
