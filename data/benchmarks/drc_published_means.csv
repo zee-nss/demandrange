@@ -1,0 +1,7 @@
+area,customer_type,mean_kwh_per_month,median_kwh_per_month,source
+Mutwanga,household,13.87,9,"Lunanga et al. (2026) Energy Economics 154:109141; IOB working paper 2025.09, Table A7 and text"
+Goma,household,39.82,27,"same"
+Lubero,household,34.46,9,"same"
+Mutwanga,SME,66.60,34,"same"
+Goma,SME,357.96,169,"same"
+Lubero,SME,170.47,84,"same"

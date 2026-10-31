@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: demandrange-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: GEO_CONTACT
+        value: your-email@example.com
+      - key: ALLOWED_ORIGINS
+        value: "*"

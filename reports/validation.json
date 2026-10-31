@@ -1,0 +1,31 @@
+{
+  "held_out_sites": {
+    "mae_kwh": 3.01,
+    "mape_pct": 18.8,
+    "baseline_mae_kwh": 4.4,
+    "improvement_vs_baseline_pct": 31.7,
+    "range_coverage_pct": 80.1,
+    "rows_tested": 2000
+  },
+  "held_out_regions": {
+    "mae_kwh": 3.35,
+    "mape_pct": 21.3,
+    "baseline_mae_kwh": 4.55,
+    "improvement_vs_baseline_pct": 26.5,
+    "range_coverage_pct": 78.1,
+    "rows_tested": 2000
+  },
+  "held_out_sites_map_inputs_only": {
+    "mae_kwh": 3.32,
+    "mape_pct": 21.5,
+    "baseline_mae_kwh": 4.4,
+    "improvement_vs_baseline_pct": 24.5,
+    "range_coverage_pct": 79.3,
+    "rows_tested": 2000
+  },
+  "growth_year0_to_year3_pct": {
+    "actual": 29.0,
+    "predicted": 27.2
+  },
+  "data_note": "Computed on simulated data unless you loaded your own CSV. Real metered data is needed before relying on it."
+}

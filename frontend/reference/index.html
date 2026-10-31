@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DemandRange</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --ink:#14213D; --teal:#0B7A75; --mist:#EEF3F6; --warn:#FFF4D6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; color:var(--ink); display:grid; grid-template-columns: 380px 1fr; height:100vh; }
+  aside { padding:16px; overflow:auto; background:#fff; border-right:1px solid #d9e2e8; }
+  #map { height:100vh; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  input, select, button { font:inherit; padding:8px; margin:4px 0; width:100%; }
+  button { background:var(--teal); color:#fff; border:0; border-radius:6px; cursor:pointer; }
+  button.secondary { background:var(--mist); color:var(--ink); }
+  .row { display:flex; gap:6px; } .row > * { flex:1; }
+  .kpis { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0; }
+  .kpi { background:var(--mist); padding:8px; border-radius:6px; } .kpi b { display:block; font-size:1.25rem; }
+  .warn { background:var(--warn); padding:8px; border-radius:6px; font-size:.9rem; margin:8px 0; }
+  .small { font-size:.85rem; color:#4a5a6a; }
+  canvas { max-width:100%; }
+  @media (max-width: 800px) { body { grid-template-columns:1fr; height:auto; } #map { height:60vh; } }
+  @media print { aside button, aside input, #map { display:none; } body { display:block; } }
+</style>
+</head>
+<body>
+<aside>
+  <h1>DemandRange</h1>
+  <div class="small">Click the map or search a place, then forecast.</div>
+  <label class="small">API address</label>
+  <input id="api" value="http://localhost:8000">
+  <div class="row"><input id="q" placeholder="Search a place, e.g. Kaduna, Nigeria"><button id="go" style="max-width:90px">Search</button></div>
+  <div class="small" id="coords">No location chosen yet.</div>
+  <input id="spend" type="number" min="0" step="1" placeholder="Monthly household energy spend, USD (optional)">
+  <button id="forecast">Forecast this village</button>
+  <div class="row"><button id="heat" class="secondary">Heatmap (5 x 5)</button>
+  <select id="metric"><option value="p50">Middle case</option><option value="p10">Low case</option><option value="p90">High case</option><option value="prob_cover_debt">Chance to cover loan</option></select></div>
+  <div id="banner"></div>
+  <div id="out"></div>
+  <canvas id="chart" height="190"></canvas>
+  <div id="exports" style="display:none">
+    <button class="secondary" id="memo">Download lender memo (.md)</button>
+    <div class="row"><button class="secondary" id="csv">Heatmap CSV</button><button class="secondary" id="geojson">Heatmap GeoJSON</button></div>
+    <button class="secondary" onclick="window.print()">Print or save as PDF</button>
+  </div>
+</aside>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const map = L.map('map').setView([9.1, 8.7], 6);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+let marker = null, heatLayer = null, chart = null, last = { lat: null, lon: null, memo: '', heatBody: null };
+
+const api = () => $('api').value.replace(/\/$/, '');
+const spend = () => ($('spend').value === '' ? null : Number($('spend').value));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function setPoint(lat, lon) {
+  last.lat = lat; last.lon = lon;
+  if (marker) marker.setLatLng([lat, lon]); else marker = L.marker([lat, lon]).addTo(map);
+  $('coords').textContent = `Location: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+}
+map.on('click', e => setPoint(e.latlng.lat, e.latlng.lng));
+
+async function call(path, body, method = 'POST') {
+  const r = await fetch(api() + path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch (e) {} throw new Error(m); }
+  return r;
+}
+function banner(warnings) {
+  $('banner').innerHTML = (warnings || []).map(w => `<div class="warn">${esc(w)}</div>`).join('');
+}
+function needPoint() { if (last.lat === null) { alert('Click the map or search a place first.'); return true; } return false; }
+
+$('go').onclick = async () => {
+  try {
+    const r = await (await call('/geocode?q=' + encodeURIComponent($('q').value), null, 'GET')).json();
+    if (!r.results.length) return alert('No place found.');
+    const p = r.results[0]; setPoint(p.lat, p.lon); map.setView([p.lat, p.lon], 11);
+  } catch (e) { alert(e.message); }
+};
+
+$('forecast').onclick = async () => {
+  if (needPoint()) return;
+  $('out').textContent = 'Reading the map and forecasting...';
+  try {
+    const d = await (await call('/forecast', { lat: last.lat, lon: last.lon, energy_spend_usd: spend() })).json();
+    const a = d.years_1_to_3_average, f = d.finance, p = d.productive_use;
+    banner(d.data_quality.warnings);
+    $('out').innerHTML = `<div class="kpis">
+      <div class="kpi"><b>${a.p50} kWh</b>middle case (per customer, month)</div>
+      <div class="kpi"><b>${a.p10} to ${a.p90}</b>low to high case</div>
+      <div class="kpi"><b>${Math.round(f.prob_cover_debt * 100)}%</b>chance it covers the loan</div>
+      <div class="kpi"><b>${Math.round(p.load_factor * 100)}%</b>load factor (${Math.round(p.cost_saving_vs_household_only_pct)}% cheaper power)</div></div>
+      ${d.system_sizing ? `<div class="small"><b>System implied (middle case):</b> about ${Math.round(d.system_sizing.sizes.middle_case.pv_kwp)} kW solar and ${Math.round(d.system_sizing.sizes.middle_case.battery_kwh)} kWh battery. Each 10% sizing error is about USD ${Math.round(d.system_sizing.cost_of_wrong.capex_per_10pct_sizing_error_usd).toLocaleString()}.</div>` : ''}
+      <div class="small">Mapped: ${d.data_quality.sources.map(esc).join('; ') || 'manual inputs'}</div>
+      <ul class="small">${d.drivers.slice(0, 3).map(x => `<li>${esc(x.what_changes)}: ${x.change_kwh > 0 ? '+' : ''}${x.change_kwh} kWh</li>`).join('')}</ul>`;
+    if (chart) chart.destroy();
+    chart = new Chart($('chart'), { type: 'line', data: { labels: d.curve.map(r => 'Year ' + r.year), datasets: [
+      { label: 'High case', data: d.curve.map(r => r.p90), borderColor: '#9CC9C6', fill: '+1', backgroundColor: 'rgba(156,201,198,.4)', pointRadius: 0 },
+      { label: 'Middle case', data: d.curve.map(r => r.p50), borderColor: '#0B7A75', fill: false },
+      { label: 'Low case', data: d.curve.map(r => r.p10), borderColor: '#9CC9C6', fill: '-1', backgroundColor: 'rgba(156,201,198,.4)', pointRadius: 0 }] },
+      options: { plugins: { legend: { labels: { boxWidth: 12 } } }, scales: { y: { title: { display: true, text: 'kWh per customer per month' } } } } });
+    last.memo = d.memo_markdown; $('exports').style.display = 'block';
+  } catch (e) { $('out').innerHTML = `<div class="warn">${esc(e.message)}</div>`; }
+};
+
+const color = t => { // 0..1 -> pale to deep teal
+  const c = [[238, 243, 246], [156, 201, 198], [11, 122, 117], [20, 33, 61]];
+  const i = Math.min(2, Math.floor(t * 3)), f = t * 3 - i;
+  return `rgb(${c[i].map((v, k) => Math.round(v + (c[i + 1][k] - v) * f)).join(',')})`;
+};
+
+$('heat').onclick = async () => {
+  if (needPoint()) return;
+  $('out').textContent = 'Building the heatmap. This can take a minute...';
+  const body = { lat: last.lat, lon: last.lon, cells_per_side: 5, half_width_km: 8, metric: $('metric').value, energy_spend_usd: spend() };
+  try {
+    const fc = await (await call('/heatmap', body)).json();
+    last.heatBody = body;
+    if (heatLayer) map.removeLayer(heatLayer);
+    const { min, max, unit } = fc.metadata, span = (max - min) || 1;
+    heatLayer = L.geoJSON(fc, {
+      style: f => ({ fillColor: f.properties.value == null ? '#ccc' : color((f.properties.value - min) / span), fillOpacity: .65, color: '#fff', weight: 1 }),
+      onEachFeature: (f, layer) => { const p = f.properties; layer.bindPopup(p.status === 'ok'
+        ? `<b>${p.p50} kWh</b> middle<br>${p.p10} to ${p.p90} kWh range<br>${Math.round(p.prob_cover_debt * 100)}% chance to cover loan<br>${p.households} buildings mapped`
+        : 'No map data for this cell'); } }).addTo(map);
+    map.fitBounds(heatLayer.getBounds());
+    banner(fc.metadata.warnings);
+    $('out').innerHTML = `<div class="small">Scale: ${min} to ${max} (${esc(unit)}). Cells ok: ${fc.metadata.cells_ok}, failed: ${fc.metadata.cells_failed}.</div>`;
+    $('exports').style.display = 'block';
+  } catch (e) { $('out').innerHTML = `<div class="warn">${esc(e.message)}</div>`; }
+};
+
+function save(name, text, type) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click();
+}
+$('memo').onclick = () => last.memo ? save('lender_memo.md', last.memo, 'text/markdown') : alert('Run a forecast first.');
+async function exportHeat(fmt) {
+  if (!last.heatBody) return alert('Build a heatmap first.');
+  try { const r = await call('/export/heatmap?format=' + fmt, last.heatBody); save('demandrange_heatmap.' + fmt, await r.text(), 'text/plain'); }
+  catch (e) { alert(e.message); }
+}
+$('csv').onclick = () => exportHeat('csv');
+$('geojson').onclick = () => exportHeat('geojson');
+</script>
+</body>
+</html>
