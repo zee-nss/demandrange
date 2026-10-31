@@ -86,13 +86,5 @@ demandrange/
 ├── models/                       the trained model is saved here
 ├── reports/                      validation.json, validation.png, sample memo
 ├── tests/test_basic.py           automatic checks
-└── docs/
-    ├── STEP_BY_STEP_GUIDE.md     beginner guide, start to submission
-    ├── REAL_DATA_GUIDE.md        where to get real data, how to train on it
-    ├── DEPLOY_GUIDE.md           Hugging Face / Render / Lovable / Bolt
-    ├── LOVABLE_BOLT_PROMPT.md    paste-ready front-end prompt + API contract
-    ├── appendix_a_solution_outline.md
-    ├── disclosure_statement.md
-    ├── data_sharing_proposal.md
-    └── pitch_and_demo_scripts.md
+
 ```
